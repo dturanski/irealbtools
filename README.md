@@ -9,8 +9,8 @@ This must be run from a machine that has iReal Pro installed and requires songs 
 ## Usage:
 
 ```
-$ ./irealb_playlist.rb <setlist> <playlistName>"
-``
+$ ./irealb_playlist.rb <setlist> <playlistName>
+```
 
 This will create a file in the current directory named `<playlistName>.html` which may be opened in iReal Pro and/or uploaded to [http://irealb.com/forums]()
 
