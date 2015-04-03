@@ -1,6 +1,7 @@
-# IRealb tools
+# IRealb Tools
 
 NOTE: For Mac OS/X only.
+Requires Ruby to be installed.
 
 This script generates an iReal Pro playlist as html from a text file containg a song list.
 
