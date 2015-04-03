@@ -152,7 +152,7 @@ end
 def normalize(title) 
 	normal = title
 	#remove special characters
-	normal = normal.gsub(/[\?']/ , '')
+	normal = normal.gsub(/[^\w\s]/ , '')
 	#format titles beginning with 'A' and 'The'
 	if (title.start_with?('The ')) 
 		normal = title.sub(/^The\s+/,'') + ', The'
@@ -179,6 +179,7 @@ def search(title,songCatalog)
 		songTitle = chart['title']
 		normalTitle = normalize(title)
 		normalSongTitle = normalize(songTitle)
+
 		if (normalSongTitle.upcase.start_with?(normalTitle.upcase))
 			songs << songTitle
 		elsif songTitle.include?('(')
