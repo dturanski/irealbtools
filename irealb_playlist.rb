@@ -1,9 +1,47 @@
 #!/usr/bin/env ruby
+
+
+# For Mac OS/X only.
+#
+# This script generates an iReal Pro playlist as html from a text file containg a song list.
+# Requires iReal Pro installed and all the songs have been imported. It searches 
+# 'UserSongs.plist' in the default installed location for each song in the list.
+# 
+# Usage:
+#
+# ./irealb_playlist.rb <setlist> <playlistName>"
+#
+# This will create <playlistName>.html which may be opened in iReal Pro and/or uploaded
+# to http://irealb.com/forums
+#
+# The search matches any chart that starts with a title in the list. If no match is 
+# found it treats content enclosed in parentheses as an alternate title. For example,
+# 'Black Orpheus' will match 'Manha De Carnivale(Black Orpheus)'.
+#
+# If multiple matches are found, you will be prompted to select one or all of the matched
+# items. If a title is not found, you will see a warning message and the process will continue
+#
+$LOAD_PATH  << './lib'
 require 'erb'
 require 'uri'
+require 'plist'
 
 $playlist=[]
 
+#
+# The OS/X path to iReal b User Songs. Assumes iReal Pro is installed locally 
+#
+$SongCatalog=ENV['HOME'] + '/Library/Containers/com.massimobiolcati.irealbookmac/Data/Library/Application Support/iReal b/UserSongs.plist'
+
+#
+# Parse the plist
+def loadSongCatalog()
+	File.exists?($SongCatalog) || abort("File not found #{$SongCatalog}. Is iReal Pro installed?")
+	return Plist::parse_xml($SongCatalog)
+end
+
+#
+#HTML ERB Template
 def getTemplate() 
 	%{
        <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
@@ -25,7 +63,7 @@ def getTemplate()
              </h3>
              <br />
             <% for @song in @songs %>
-            <p><%=@song.index%>.<%=' '+@song.title%> - <%=@song.author%><br>
+            <p><%=@song.index%>.<%=' '+@song.title%> - <%=@song.composer%><br>
             <% end %>
             </p><br />
             <br />Made with iReal Pro
@@ -36,6 +74,8 @@ def getTemplate()
   }
  end
 
+#
+# Holds the data used by the template
 class PlayList
   include ERB::Util
   attr_accessor :name, :songs, :template, :playlistUri
@@ -51,52 +91,64 @@ class PlayList
     ERB.new(@template,0,'>').result(binding)
   end
 
-  def save(file)
-    File.open(file, "w+") do |f|
+  def save()
+    File.open("#{@name}.html", "w+") do |f|
       f.write(render)
     end
   end
 end
 
 class Song 
-	attr_accessor :title, :author, :content, :index
-	def initialize(title, author, content, index)
-		@title = title
-    	@author = author
-    	@content = content
+	Song::FIELD_SEPARATOR = "="
+	attr_accessor :title, :composer, :chordProgression, :style, :index
+	def initialize(data, index)
+		@data = data
+		@title = data['title']
+		@composer = data['composer']
+		@chordProgression = data['chordProgression']
+		@style = data['style']
+		@key = data['keySignature']
     	@index = index
-	end   
+
+	end
+
+	#
+	# format the content
+	def content()
+		content = ""
+		content << @title << FIELD_SEPARATOR <<@composer << FIELD_SEPARATOR << FIELD_SEPARATOR
+		content << @style << FIELD_SEPARATOR
+		content << @key << FIELD_SEPARATOR << FIELD_SEPARATOR
+		content << @chordProgression
+		content << FIELD_SEPARATOR << FIELD_SEPARATOR << '0' << FIELD_SEPARATOR << '0'
+		content = URI.escape(content,/[^a-zA-Z0-9\-\*\/]/)
+ 	end
 end
 
-
-def generatePlaylist(dir, name) 
+#
+# Build the playlist
+def generatePlaylist(songCatalog, name) 
 	songs = []
 
 	playlistUri = "irealb://"
 
-	$playlist.each_with_index {|chart, i|
-		fname = [dir,chart].join('/')
-		content = (File.readlines(fname))[0]
-		title,author = content.split("%3D")
-		title = URI.unescape(title)
-		author = URI.unescape(author)
-		songs << Song.new(title,author,content, i + 1)
-		playlistUri << content
+	$playlist.each_with_index {|songTitle, i|
+		result = songCatalog.select{|hash| hash["title"] == songTitle }
+		song = Song.new(result[0], i+1)
+		songs << song
+		playlistUri << song.content()
 		playlistUri << "%3D%3D%3D"
 	}
 	playlistUri << URI.escape(name)
 
-	#puts playlistUri
 	list = PlayList.new(name, songs, playlistUri, getTemplate())
-	list.save(File.new("#{name}.html", "w"));
+	list.save();
 end
 
 
 
 #
-# Read a set list and create a playlist
-# Search for songs in the list
-#
+# Reformat titles to enable a match
 def normalize(title) 
 	normal = title
 	#remove special characters
@@ -120,11 +172,11 @@ def normalize(title)
 end
 
 #
-#
-#
-def search(songCatalog, title)
+# search the song catalog for a title
+def search(title,songCatalog)
 	songs = []
-	songCatalog.each { |songTitle|
+	songCatalog.each { |chart|
+		songTitle = chart['title']
 		normalTitle = normalize(title)
 		normalSongTitle = normalize(songTitle)
 		if (normalSongTitle.upcase.start_with?(normalTitle.upcase))
@@ -141,8 +193,7 @@ def search(songCatalog, title)
 end
 
 #
-#
-#
+# Prompt the user to choose if multiple songs match a title
 def choose(title, songs) 
 	puts "'#{title}' matches more than one chart."
 	songs.each_with_index { |s,i|
@@ -166,20 +217,17 @@ end
 
 #
 #
-#
 def addToPlaylist(title)
-	#puts "#{title}"
 	$playlist << title
 end
 
 #
-#
-#
+# search and narrow choices for multiple hits if necessary
 def findChart(title, songCatalog)
-	songs = search(songCatalog, title)
+	songs = search(title, songCatalog)
 	if (songs.size() > 1) 
 		title = choose(title, songs)
-		if (title == nil)
+		if (title == nil) #user selected all
 			songs.each { |s|
 				addToPlaylist(s)
 			}
@@ -195,28 +243,26 @@ end
 #
 # Main
 #
-if ARGV[0] == nil || ARGV[1] == nil || ARGV[2] == nil
-    puts "Usage: ./irealb_playlist.rb <setlist> <songCatalogDirectory> <playlistName>"
+if ARGV[0] == nil || ARGV[1] == nil
+    puts "Usage: ./irealb_playlist.rb <setlist> <playlistName>"
     exit
 end
 
 setlist = ARGV[0]
-File.exists?(setlist) || die("input file #{setlist} does not exist.")
-songCatalogDir = ARGV[1]
-File.directory?(songCatalogDir) || die("Song catalog not found at #{songCatalogDir}.")
-
-songCatalog = Dir.entries(songCatalogDir)
+name = ARGV[1]
+File.exists?(setlist) || abort("input file #{setlist} does not exist.")
+songs = loadSongCatalog()
 
 File.open(setlist, "r").each_line { |line| 
 	title = line.rstrip
-	if (findChart(title, songCatalog).size() == 0)
-		puts "WARNING: Cannot find #{title} in the catalog."
+	if (title.size > 0) 
+		if (findChart(title, songs).size() == 0)
+			puts "No chart found for '#{title}'."
+		end
 	end
 }
 
-name = ARGV[2]
-
-generatePlaylist(songCatalogDir, name)
+generatePlaylist(songs, name)
 
 
 
