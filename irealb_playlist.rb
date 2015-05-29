@@ -152,7 +152,7 @@ end
 def normalize(title) 
 	normal = title
 	#remove special characters
-	normal = normal.gsub(/[^\w\s]/ , '')
+	normal = normal.gsub(/[^\w\s,]/ , '')
 	#format titles beginning with 'A' and 'The'
 	if (title.start_with?('The ')) 
 		normal = title.sub(/^The\s+/,'') + ', The'
